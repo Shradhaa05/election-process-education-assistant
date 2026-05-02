@@ -1,4 +1,5 @@
 import { db } from '../config/firebase.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Fallback mock data in case Firebase is not connected (improves dev experience if credentials are bad)
 const MOCK_DATA = {
@@ -96,25 +97,25 @@ export const postQuestion = async (req, res) => {
       });
     }
 
-    // Process naive bot response logic serverside
-    const lowerQuestion = question.toLowerCase();
-    let response = "Sorry, I didn't quite catch that. Try asking me about 'registering to vote', 'where to vote', or 'what ID to bring'.";
-    
-    if (lowerQuestion.includes('register') || lowerQuestion.includes('sign up')) {
-      response = "To register to vote, you typically need to submit a form to your local election office either online, by mail, or in person. Deadlines vary by state.";
-    } else if (lowerQuestion.includes('id') || lowerQuestion.includes('bring')) {
-      response = "If you're voting in person, most polling locations ask for a valid ID (like a Driver's License or Passport).";
-    } else if (lowerQuestion.includes('where') || lowerQuestion.includes('location') || lowerQuestion.includes('place')) {
-      response = "Your polling place depends on your residential address. You can easily find it by visiting your state's official voter portal online.";
-    } else if (lowerQuestion.includes('mail') || lowerQuestion.includes('absentee')) {
-      response = "Voting by mail (or absentee voting) lets you cast your ballot from home. You'll need to request a mail-in ballot before your state's deadline.";
-    } else if (lowerQuestion.includes('deadline') || lowerQuestion.includes('when')) {
-      response = "Election Day is generally the first Tuesday in November, but early voting and registration deadlines happen weeks before!";
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+      return res.json({ response: "Sorry, I am currently unable to reach my AI brain. Please make sure to add your GEMINI_API_KEY to the server's .env file." });
     }
 
-    res.json({ response });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `You are the CivicGuide Bot, a helpful, non-partisan assistant designed to make the US election process easy to understand for citizens.
+Answer the user's question clearly, accurately, and concisely. Keep answers to 2-3 short paragraphs max.
+If the question is completely unrelated to elections, voting, or civics, politely decline to answer and guide them back to election-related topics.
+User Question: ${question}`;
+
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+
+    res.json({ response: responseText });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Gemini AI Error:", error);
+    res.status(500).json({ error: "Sorry, I encountered an error while communicating with the AI service." });
   }
 };
 
